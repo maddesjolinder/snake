@@ -47,7 +47,8 @@
   .title svg{ display:block; }
 
   /* black terminal body */
-  .screenwrap{ background:#000; padding:9px; border:1px solid #d0d0d0; }  /* frame on all four sides */
+  .screenwrap{ background:#000; padding:9px; border:1px solid #d0d0d0;   /* frame on all four sides */
+    border-bottom-left-radius:10px; border-bottom-right-radius:10px; }   /* match the terminal's rounded bottom so the border corners aren't clipped */
   #screen{
     color:#d8d8d8;
     background:#000;
@@ -167,7 +168,7 @@
            "Arrows or swipe to move    R restart    Q quit"]);
     } else if (state === "over"){
       stamp(grid, ["GAME OVER", "", "Final score: "+score, "",
-                   "Press R or tap to play again"]);
+                   isTouch() ? "Tap to play again" : "Press R or tap to play again"]);
     }
     screen.textContent = grid.map(r=>r.join("")).join("\n");
   }
