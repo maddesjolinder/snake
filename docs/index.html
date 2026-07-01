@@ -243,6 +243,12 @@
   function fit(){
     const t = document.querySelector(".terminal");
     t.style.transform = "none";                         // reset to measure natural size
+    t.style.width = "";                                 // reset any previous snap
+    // pixel-snap: whole-pixel width, and keep the centred gap even so the
+    // left/right edges land on integer pixels (crisp, symmetric corners)
+    let w = Math.floor(t.getBoundingClientRect().width);
+    if (((window.innerWidth - w) % 2) !== 0) w -= 1;
+    t.style.width = w + "px";
     const s = Math.min(1, (window.innerWidth - 14) / t.offsetWidth,
                            (window.innerHeight - 14) / t.offsetHeight);
     t.style.transformOrigin = "center center";
