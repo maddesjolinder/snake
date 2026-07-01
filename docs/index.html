@@ -163,9 +163,9 @@
     } else if (state === "ready"){
       stamp(grid, isTouch()
         ? ["S N A K E", "", "tap to start", "",
-           "swipe to move    R restart    Q quit"]
+           "swipe to move"]
         : ["S N A K E", "", "Press a key or tap to start", "",
-           "Arrows or swipe to move    R restart    Q quit"]);
+           "Arrows or swipe to move"]);
     } else if (state === "over"){
       stamp(grid, ["GAME OVER", "", "Final score: "+score, "",
                    isTouch() ? "Tap to play again" : "Press R or tap to play again"]);
