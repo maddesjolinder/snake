@@ -10,7 +10,6 @@
     height:100%;
     background:transparent;            /* let the parent page (cargo desktop) show through */
     overflow:hidden;
-    touch-action:none;                 /* no scroll/zoom stealing touch input */
     display:flex; align-items:center; justify-content:center;
     font-family: ui-monospace, "SF Mono", "Menlo", "Monaco", Consolas, "DejaVu Sans Mono", monospace;
   }
@@ -20,6 +19,7 @@
     flex:0 0 auto;                     /* don't shrink in the flex body — keep true content width */
     border-radius:10px;
     overflow:hidden;
+    touch-action:none;                 /* swipes on the terminal steer, don't scroll */
     box-shadow:0 26px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4);
     /* natural (content) width; fit() scales it down to fit small viewports */
   }
@@ -47,9 +47,8 @@
   .title svg{ display:block; }
 
   /* black terminal body */
-  .screenwrap{ background:#000; padding:9px; }
+  .screenwrap{ background:#000; padding:9px; border:1px solid #d0d0d0; }  /* frame on all four sides */
   #screen{
-    border:1px solid #d0d0d0;
     color:#d8d8d8;
     background:#000;
     font-size:15px;
@@ -135,6 +134,11 @@
 
   function gameOver(){ setState("over"); }
 
+  function isTouch(){
+    return (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+        || ("ontouchstart" in window) || ((navigator.maxTouchPoints||0) > 0);
+  }
+
   // center one or more lines into the character grid
   function stamp(grid, lines){
     const sy = ((ROWS - lines.length)/2)|0;
@@ -156,8 +160,11 @@
       if (food.x>=0) grid[food.y][food.x] = FOOD;
       snake.forEach((s,i)=> grid[s.y][s.x] = i===0?HEAD:BODY);
     } else if (state === "ready"){
-      stamp(grid, ["S N A K E", "", "Press a key or tap to start", "",
-                   "Arrows or swipe to move    R restart    Q quit"]);
+      stamp(grid, isTouch()
+        ? ["S N A K E", "", "tap to start", "",
+           "swipe to move    R restart    Q quit"]
+        : ["S N A K E", "", "Press a key or tap to start", "",
+           "Arrows or swipe to move    R restart    Q quit"]);
     } else if (state === "over"){
       stamp(grid, ["GAME OVER", "", "Final score: "+score, "",
                    "Press R or tap to play again"]);
@@ -173,7 +180,10 @@
 
   // apply a direction from any input source (shared by keyboard + touch)
   function handleDir(nd){
-    if (state === "ready"){ pendingDir = nd; setState("running"); return; }
+    if (state === "ready"){
+      if (!(nd.x === -dir.x && nd.y === -dir.y)) pendingDir = nd;  // ignore a start input that reverses into the body
+      setState("running"); return;
+    }
     if (state !== "running") return;
     if (nd.x === -dir.x && nd.y === -dir.y) return;   // no 180° reversal
     pendingDir = nd;
@@ -194,30 +204,39 @@
     if (nd) handleDir(nd);
   });
 
-  // ---- touch controls: tap a zone (relative to board centre) or swipe ----
+  // ---- touch: gameplay ONLY on the terminal; taps elsewhere fall through to close ----
+  const term = document.querySelector(".terminal");
   let tsx = 0, tsy = 0;
   function dirFromDelta(dx, dy){
     return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? {x:1,y:0} : {x:-1,y:0})
                                        : (dy > 0 ? {x:0,y:1} : {x:0,y:-1});
   }
-  window.addEventListener("touchstart", function(e){
+  term.addEventListener("touchstart", function(e){
     const t = e.changedTouches[0]; tsx = t.clientX; tsy = t.clientY;
     e.preventDefault();
   }, {passive:false});
-  window.addEventListener("touchend", function(e){
+  term.addEventListener("touchend", function(e){
+    e.preventDefault();
+    if (state === "over" || state === "quit"){ reset(); setState("running"); return; }
+    if (state === "ready"){ setState("running"); return; }   // first tap: start only, no move
     const t = e.changedTouches[0];
     const dx = t.clientX - tsx, dy = t.clientY - tsy;
     let nd;
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 12){        // tap → quadrant from board centre
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12){             // tap → quadrant from board centre
       const r = screen.getBoundingClientRect();
       nd = dirFromDelta(t.clientX - (r.left + r.width/2), t.clientY - (r.top + r.height/2));
-    } else {                                            // swipe → dominant axis
+    } else {                                                 // swipe → dominant axis
       nd = dirFromDelta(dx, dy);
     }
-    if (state === "over" || state === "quit"){ reset(); setState("running"); }
-    else handleDir(nd);
-    e.preventDefault();
+    handleDir(nd);
   }, {passive:false});
+
+  // a tap/click OUTSIDE the terminal asks the parent popup to close (single tap)
+  document.addEventListener("click", function(e){
+    if (!(e.target.closest && e.target.closest(".terminal"))){
+      try { if (window.parent && window.parent !== window) window.parent.postMessage("snake:close", "*"); } catch(err){}
+    }
+  });
 
   // ---- scale the whole terminal window to fit the viewport (mobile) ----
   function fit(){
@@ -228,7 +247,7 @@
     t.style.transformOrigin = "center center";
     t.style.transform = "scale(" + s + ")";
   }
-  window.addEventListener("resize", fit);
+  window.addEventListener("resize", function(){ fit(); render(); });
   window.addEventListener("load", fit);
 
   // ---- boot ----
