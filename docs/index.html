@@ -8,7 +8,9 @@
   *{ box-sizing:border-box; margin:0; padding:0; }
   html,body{
     height:100%;
-    background:#0a0a0a;
+    background:#000;
+    overflow:hidden;
+    touch-action:none;                 /* no scroll/zoom stealing touch input */
     display:flex; align-items:center; justify-content:center;
     font-family: ui-monospace, "SF Mono", "Menlo", "Monaco", Consolas, "DejaVu Sans Mono", monospace;
   }
@@ -153,11 +155,11 @@
       if (food.x>=0) grid[food.y][food.x] = FOOD;
       snake.forEach((s,i)=> grid[s.y][s.x] = i===0?HEAD:BODY);
     } else if (state === "ready"){
-      stamp(grid, ["S N A K E", "", "Press an arrow key to start", "",
-                   "Arrows move    *  food    R  restart    Q  quit"]);
+      stamp(grid, ["S N A K E", "", "Press a key or tap to start", "",
+                   "Arrows or swipe to move    R restart    Q quit"]);
     } else if (state === "over"){
       stamp(grid, ["GAME OVER", "", "Final score: "+score, "",
-                   "Press R to play again, Q to quit"]);
+                   "Press R or tap to play again"]);
     }
     screen.textContent = grid.map(r=>r.join("")).join("\n");
   }
@@ -167,6 +169,14 @@
     ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}, ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0},
     w:{x:0,y:-1}, s:{x:0,y:1}, a:{x:-1,y:0}, d:{x:1,y:0}
   };
+
+  // apply a direction from any input source (shared by keyboard + touch)
+  function handleDir(nd){
+    if (state === "ready"){ pendingDir = nd; setState("running"); return; }
+    if (state !== "running") return;
+    if (nd.x === -dir.x && nd.y === -dir.y) return;   // no 180° reversal
+    pendingDir = nd;
+  }
 
   window.addEventListener("keydown", function(e){
     const k = e.key.length===1 ? e.key.toLowerCase() : e.key;
@@ -180,16 +190,50 @@
     if (k === "r"){ reset(); setState("running"); return; }
 
     const nd = KEYS[k];
-    if (!nd) return;
-    if (state === "ready"){ pendingDir = nd; setState("running"); return; }
-    if (state !== "running") return;
-    if (nd.x === -dir.x && nd.y === -dir.y) return;   // no 180° reversal
-    pendingDir = nd;
+    if (nd) handleDir(nd);
   });
+
+  // ---- touch controls: tap a zone (relative to board centre) or swipe ----
+  let tsx = 0, tsy = 0;
+  function dirFromDelta(dx, dy){
+    return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? {x:1,y:0} : {x:-1,y:0})
+                                       : (dy > 0 ? {x:0,y:1} : {x:0,y:-1});
+  }
+  window.addEventListener("touchstart", function(e){
+    const t = e.changedTouches[0]; tsx = t.clientX; tsy = t.clientY;
+    e.preventDefault();
+  }, {passive:false});
+  window.addEventListener("touchend", function(e){
+    const t = e.changedTouches[0];
+    const dx = t.clientX - tsx, dy = t.clientY - tsy;
+    let nd;
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12){        // tap → quadrant from board centre
+      const r = screen.getBoundingClientRect();
+      nd = dirFromDelta(t.clientX - (r.left + r.width/2), t.clientY - (r.top + r.height/2));
+    } else {                                            // swipe → dominant axis
+      nd = dirFromDelta(dx, dy);
+    }
+    if (state === "over" || state === "quit"){ reset(); setState("running"); }
+    else handleDir(nd);
+    e.preventDefault();
+  }, {passive:false});
+
+  // ---- scale the whole terminal window to fit the viewport (mobile) ----
+  function fit(){
+    const t = document.querySelector(".terminal");
+    t.style.transform = "none";                         // reset to measure natural size
+    const s = Math.min(1, (window.innerWidth - 14) / t.offsetWidth,
+                           (window.innerHeight - 14) / t.offsetHeight);
+    t.style.transformOrigin = "center center";
+    t.style.transform = "scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  window.addEventListener("load", fit);
 
   // ---- boot ----
   reset();
   setState("ready");
+  fit();
 })();
 </script>
 </body>
