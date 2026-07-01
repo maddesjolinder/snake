@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>snake — python3</title>
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{
+    height:100%;
+    background:#0a0a0a;
+    display:flex; align-items:center; justify-content:center;
+    font-family: ui-monospace, "SF Mono", "Menlo", "Monaco", Consolas, "DejaVu Sans Mono", monospace;
+  }
+
+  /* macOS Terminal window */
+  .terminal{
+    border-radius:10px;
+    overflow:hidden;
+    box-shadow:0 26px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4);
+    max-width:96vw;
+  }
+
+  /* light title bar */
+  .titlebar{
+    position:relative;
+    display:flex; align-items:center;
+    height:28px;
+    padding:0 11px;
+    background:linear-gradient(#ececec,#d2d2d2);
+    border-bottom:1px solid #b3b3b3;
+    user-select:none;
+  }
+  .lights{ display:flex; gap:8px; z-index:1; }
+  .dot{ width:12px; height:12px; border-radius:50%; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.22); }
+  .dot.r{ background:#ff5f56; } .dot.y{ background:#ffbd2e; } .dot.g{ background:#27c93f; }
+  .title{
+    position:absolute; left:0; right:0;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+    font-size:13px; font-weight:600; color:#4a4a4a;
+    pointer-events:none;
+  }
+  .title svg{ display:block; }
+
+  /* black terminal body */
+  .screenwrap{ background:#000; padding:9px; }
+  #screen{
+    border:1px solid #d0d0d0;
+    color:#d8d8d8;
+    background:#000;
+    font-size:15px;
+    line-height:1.2;
+    white-space:pre;
+    padding:0;
+    margin:0;
+    /* min play size; content (monospace grid) defines width */
+  }
+  .cursor{
+    display:inline-block;
+    width:.6ch; height:1.05em;
+    background:#d8d8d8;
+    vertical-align:-2px;
+    animation:blink 1.05s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+</style>
+</head>
+<body>
+  <div class="terminal">
+    <div class="titlebar">
+      <span class="lights"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></span>
+      <span class="title">
+        <svg width="16" height="13" viewBox="0 0 16 13" aria-hidden="true">
+          <path d="M1 3a1 1 0 0 1 1-1h3.2l1.4 1.4H14a1 1 0 0 1 1 1V11a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1z" fill="#5aa7ff"/>
+          <path d="M1 4.6h14V11a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1z" fill="#4f97ef"/>
+        </svg>
+        snake — python3 ‹ uv run main.py — 80×24
+      </span>
+    </div>
+    <div class="screenwrap">
+      <pre id="screen"></pre>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- config (mirrors main.py) ----
+  const COLS = 78, ROWS = 22;          // ~80×24 terminal, minus the window border
+  const TICK_MS = 120;                 // constant speed — main.py TICK_MS
+  const HEAD = "@", BODY = "o", FOOD = "*";
+
+  const screen = document.getElementById("screen");
+  let snake, dir, pendingDir, food, score, state, timer;
+
+  function spawnFood(){
+    const free = [];
+    for (let y=0;y<ROWS;y++) for (let x=0;x<COLS;x++)
+      if (!snake.some(s=>s.x===x && s.y===y)) free.push({x,y});
+    food = free.length ? free[(Math.random()*free.length)|0] : {x:-1,y:-1};
+  }
+
+  function reset(){
+    const cx = (COLS/2)|0, cy = (ROWS/2)|0;
+    snake = [{x:cx,y:cy},{x:cx-1,y:cy},{x:cx-2,y:cy}];
+    dir = {x:1,y:0}; pendingDir = {x:1,y:0};
+    score = 0;
+    spawnFood();
+  }
+
+  function startLoop(){ clearInterval(timer); timer = setInterval(tick, TICK_MS); }
+
+  function setState(s){
+    state = s;
+    if (s === "running") startLoop(); else clearInterval(timer);
+    render();
+  }
+
+  function tick(){
+    dir = pendingDir;
+    const head = {x:snake[0].x + dir.x, y:snake[0].y + dir.y};
+    if (head.x<0 || head.x>=COLS || head.y<0 || head.y>=ROWS) return gameOver();   // wall
+    const eating = (head.x===food.x && head.y===food.y);
+    const body = eating ? snake : snake.slice(0, snake.length-1);
+    if (body.some(s=>s.x===head.x && s.y===head.y)) return gameOver();             // self
+    snake.unshift(head);
+    if (eating){ score += 1; spawnFood(); } else { snake.pop(); }
+    render();
+  }
+
+  function gameOver(){ setState("over"); }
+
+  // center one or more lines into the character grid
+  function stamp(grid, lines){
+    const sy = ((ROWS - lines.length)/2)|0;
+    lines.forEach((ln,i)=>{
+      const y = sy+i; if (y<0||y>=ROWS) return;
+      const sx = ((COLS - ln.length)/2)|0;
+      for (let k=0;k<ln.length;k++){ const x=sx+k; if (x>=0&&x<COLS) grid[y][x]=ln[k]; }
+    });
+  }
+
+  function render(){
+    if (state === "quit"){                 // program exited; zsh prompt returns
+      screen.innerHTML = ' snake % <span class="cursor"></span>';
+      return;
+    }
+    const grid = Array.from({length:ROWS}, ()=> new Array(COLS).fill(" "));
+
+    if (state === "running"){
+      if (food.x>=0) grid[food.y][food.x] = FOOD;
+      snake.forEach((s,i)=> grid[s.y][s.x] = i===0?HEAD:BODY);
+    } else if (state === "ready"){
+      stamp(grid, ["S N A K E", "", "Press an arrow key to start", "",
+                   "Arrows move    *  food    R  restart    Q  quit"]);
+    } else if (state === "over"){
+      stamp(grid, ["GAME OVER", "", "Final score: "+score, "",
+                   "Press R to play again, Q to quit"]);
+    }
+    screen.textContent = grid.map(r=>r.join("")).join("\n");
+  }
+
+  // ---- input ----
+  const KEYS = {
+    ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}, ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0},
+    w:{x:0,y:-1}, s:{x:0,y:1}, a:{x:-1,y:0}, d:{x:1,y:0}
+  };
+
+  window.addEventListener("keydown", function(e){
+    const k = e.key.length===1 ? e.key.toLowerCase() : e.key;
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
+
+    if (k === "q"){
+      if (state === "running") gameOver();   // end round → game over (like main.py)
+      else setState("quit");                 // ready / game over → exit to shell
+      return;
+    }
+    if (k === "r"){ reset(); setState("running"); return; }
+
+    const nd = KEYS[k];
+    if (!nd) return;
+    if (state === "ready"){ pendingDir = nd; setState("running"); return; }
+    if (state !== "running") return;
+    if (nd.x === -dir.x && nd.y === -dir.y) return;   // no 180° reversal
+    pendingDir = nd;
+  });
+
+  // ---- boot ----
+  reset();
+  setState("ready");
+})();
+</script>
+</body>
+</html>
